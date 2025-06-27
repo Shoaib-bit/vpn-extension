@@ -174,7 +174,7 @@ export const VpnProvider = ({ children }: { children: React.ReactNode }) => {
             pacScript: {
               data: `
                 function FindProxyForURL(url, host) {
-                  return "SOCKS5 127.0.0.1:1080";
+                  return "SOCKS5  192.168.18.44:1080";
                 }
               `
             }
