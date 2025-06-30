@@ -4,29 +4,18 @@ import { CountryItem } from './CountryItem'
 
 interface LocationListProps {
   searchQuery: string
-  showFavoritesOnly: boolean
 }
 
-export function LocationList({ searchQuery, showFavoritesOnly }: LocationListProps) {
-  const { favoriteLocations, locations, isLoading } = useVpn()
+export function LocationList({ searchQuery }: LocationListProps) {
+  const { locations, isLoading } = useVpn()
 
   const filteredLocations = useMemo(() => {
-    let filteredLocs = locations
-
-    // Filter by search query
+    // Filter by search query only
     if (searchQuery) {
-      filteredLocs = filteredLocs.filter(location =>
-        location.serverName.toLowerCase().includes(searchQuery.toLowerCase())
-      )
+      return locations.filter(location => location.serverName.toLowerCase().includes(searchQuery.toLowerCase()))
     }
-
-    // Filter by favorites
-    if (showFavoritesOnly) {
-      filteredLocs = filteredLocs.filter(location => favoriteLocations.includes(location._id))
-    }
-
-    return filteredLocs
-  }, [searchQuery, showFavoritesOnly, favoriteLocations, locations])
+    return locations
+  }, [searchQuery, locations])
 
   if (isLoading) {
     return (
@@ -37,9 +26,11 @@ export function LocationList({ searchQuery, showFavoritesOnly }: LocationListPro
   }
 
   return (
-    <div className='overflow-y-auto max-h-[220px]'>
+    <div className='overflow-y-auto max-h-[300px]'>
       {filteredLocations.length === 0 ? (
-        <div className='p-4 text-center text-gray-400'>No locations found</div>
+        <div className='p-4 text-center text-gray-400'>
+          {searchQuery ? 'No servers match your search' : 'No locations found'}
+        </div>
       ) : (
         filteredLocations.map(location => <CountryItem key={location._id} location={location} />)
       )}

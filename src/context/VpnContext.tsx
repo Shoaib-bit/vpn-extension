@@ -1,9 +1,7 @@
 import { useServerLocations } from '@/hooks/useServerLocations'
-import { parseWireGuardConfig } from '@/lib/utils'
 import { registerServer } from '@/services/api'
-import { ServerLocation } from '@/types'
+import { ServerLocation, ServerResponse } from '@/types'
 import { getDeviceId } from '@/utils/deviceId'
-import axios from 'axios'
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react'
 
 interface VpnContextType {
@@ -13,9 +11,6 @@ interface VpnContextType {
   disconnectVpn: () => void
   currentLocation: ServerLocation | null
   setCurrentLocation: (location: ServerLocation) => void
-  favoriteLocations: string[]
-  toggleFavorite: (locationId: string) => void
-  isFavorite: (locationId: string) => boolean
   locations: ServerLocation[]
   isLoading: boolean
   error: string | null
@@ -40,7 +35,6 @@ export function getAvailableLocations(): ServerLocation[] {
 export const VpnProvider = ({ children }: { children: React.ReactNode }) => {
   const [isConnected, setIsConnected] = useState<'not-connected' | 'connected' | 'connecting'>('not-connected')
   const [currentLocation, setCurrentLocation] = useState<ServerLocation | null>(null)
-  const [favoriteLocations, setFavoriteLocations] = useState<string[]>([])
   const { locations, isLoading, error } = useServerLocations()
   const [connectionTime, setConnectionTime] = useState<number>(0)
   const timerRef = useRef<NodeJS.Timeout | null>(null)
@@ -48,21 +42,10 @@ export const VpnProvider = ({ children }: { children: React.ReactNode }) => {
   const [ipAddress, setIpAddress] = useState<string>('')
 
   useEffect(() => {
-    const savedFavorites = localStorage.getItem('favoriteLocations')
     const currentLocationId = localStorage.getItem('currentLocationId')
     const connectedStatus = localStorage.getItem('isConnected')
     const connectionTime = localStorage.getItem('connectionTime')
     const ipAdd = localStorage.getItem('ipAddress')
-    if (savedFavorites) {
-      try {
-        const parsedFavorites = JSON.parse(savedFavorites)
-        if (Array.isArray(parsedFavorites)) {
-          setFavoriteLocations(parsedFavorites)
-        }
-      } catch (e) {
-        console.error('Error parsing favorites from localStorage', e)
-      }
-    }
 
     if (currentLocationId && locations && locations?.length > 0 && !currentLocation) {
       const location = locations.find(location => location._id === currentLocationId)
@@ -89,10 +72,6 @@ export const VpnProvider = ({ children }: { children: React.ReactNode }) => {
       setIpAddress(ipAdd)
     }
   }, [locations])
-
-  useEffect(() => {
-    localStorage.setItem('favoriteLocations', JSON.stringify(favoriteLocations))
-  }, [favoriteLocations])
 
   useEffect(() => {
     return () => {
@@ -139,31 +118,12 @@ export const VpnProvider = ({ children }: { children: React.ReactNode }) => {
     if (!currentLocation) return
 
     setIsConnected('connecting')
-    const deviceId = await getDeviceId() // Get unique device ID
+    const deviceId = await getDeviceId()
 
     try {
-      // Register the server and get config data
-      const registeredServer = await registerServer(currentLocation?.url, deviceId)
-      const data = parseWireGuardConfig(registeredServer.client_config)
-
-      setIpAddress(data.Peer.Endpoint.split(':')[0])
-
-      localStorage.setItem('ipAddress', data.Peer.Endpoint.split(':')[0])
-
-      // Send the config to the vpn_app.exe to update and run the proxy
-      const config = {
-        wgConfig: data,
-        deviceId: deviceId
-      }
-
-      const configMessage = JSON.stringify(config)
-      console.log('Config message:', configMessage)
-
-      const res = await axios.post('http://127.0.0.1:8000/register', {
-        url: currentLocation?.url + '/register',
-        device_id: deviceId
-      })
-      console.log('Response from server:', res.data)
+      const registeredServer: ServerResponse = await registerServer(currentLocation?.url, deviceId)
+      setIpAddress(registeredServer.host)
+      localStorage.setItem('ipAddress', registeredServer.host)
 
       localStorage.setItem('currentLocationId', currentLocation._id)
 
@@ -174,7 +134,7 @@ export const VpnProvider = ({ children }: { children: React.ReactNode }) => {
             pacScript: {
               data: `
                 function FindProxyForURL(url, host) {
-                  return "SOCKS5  192.168.18.44:1080";
+                  return "${registeredServer.type} ${registeredServer.host}:${registeredServer.port}";
                 }
               `
             }
@@ -195,31 +155,24 @@ export const VpnProvider = ({ children }: { children: React.ReactNode }) => {
   }
 
   const disconnectVpn = async () => {
+    if (!currentLocation) return
     setIsConnected('not-connected')
-    await axios.post('http://127.0.0.1:8000/stop-proxy')
 
-    chrome.proxy.settings.clear({ scope: 'regular' }, () => {
-      console.log('VPN Disconnected!')
-    })
+    try {
+      // const deviceId = await getDeviceId()
 
-    localStorage.removeItem('currentLocationId')
-    localStorage.removeItem('ipAddress')
+      // await stopServer(currentLocation?.url, deviceId)
+      chrome.proxy.settings.clear({ scope: 'regular' }, () => {
+        console.log('VPN Disconnected!')
+      })
+
+      localStorage.removeItem('currentLocationId')
+      localStorage.removeItem('ipAddress')
+    } catch (err) {
+      console.error('Error disconnecting VPN:', err)
+    }
 
     setConnectionTime(0)
-  }
-
-  const toggleFavorite = (locationId: string) => {
-    setFavoriteLocations(prev => {
-      if (prev.includes(locationId)) {
-        return prev.filter(id => id !== locationId)
-      } else {
-        return [...prev, locationId]
-      }
-    })
-  }
-
-  const isFavorite = (locationId: string) => {
-    return favoriteLocations.includes(locationId)
   }
 
   const value = {
@@ -228,9 +181,6 @@ export const VpnProvider = ({ children }: { children: React.ReactNode }) => {
     disconnectVpn,
     currentLocation,
     setCurrentLocation,
-    favoriteLocations,
-    toggleFavorite,
-    isFavorite,
     locations,
     isLoading,
     connectionTime,

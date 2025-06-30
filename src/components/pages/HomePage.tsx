@@ -23,7 +23,7 @@ export function HomePage() {
       <div className='text-center mb-2'>
         <h1 className='text-sm text-gray-400 mb-1'>Welcome to</h1>
         <h2 className='text-xl font-bold'>
-          <span className='text-vpn-blue'>Virtual 5G</span> - <span>VPN</span>
+          <span className='text-vpn-blue'>VPN Express</span>
         </h2>
       </div>
       {currentLocation && (
