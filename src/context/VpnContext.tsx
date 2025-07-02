@@ -6,11 +6,12 @@ import React, { createContext, useContext, useEffect, useRef, useState } from 'r
 
 interface VpnContextType {
   isConnected: 'not-connected' | 'connected' | 'connecting'
-  connectVpn: () => void
+  connectVpn: (location?: ServerLocation) => void
   connectionTime: number
   disconnectVpn: () => void
   currentLocation: ServerLocation | null
   setCurrentLocation: (location: ServerLocation) => void
+  switchServer: (location: ServerLocation) => void
   locations: ServerLocation[]
   isLoading: boolean
   error: string | null
@@ -114,18 +115,19 @@ export const VpnProvider = ({ children }: { children: React.ReactNode }) => {
     }
   }, [isConnected])
 
-  const connectVpn = async () => {
-    if (!currentLocation) return
+  const connectVpn = async (location?: ServerLocation) => {
+    const targetLocation = location || currentLocation
+    if (!targetLocation) return
 
     setIsConnected('connecting')
     const deviceId = await getDeviceId()
 
     try {
-      const registeredServer: ServerResponse = await registerServer(currentLocation?.url, deviceId)
+      const registeredServer: ServerResponse = await registerServer(targetLocation?.url, deviceId)
       setIpAddress(registeredServer.host)
       localStorage.setItem('ipAddress', registeredServer.host)
 
-      localStorage.setItem('currentLocationId', currentLocation._id)
+      localStorage.setItem('currentLocationId', targetLocation._id)
 
       chrome.proxy.settings.set(
         {
@@ -175,12 +177,38 @@ export const VpnProvider = ({ children }: { children: React.ReactNode }) => {
     setConnectionTime(0)
   }
 
+  const switchServer = async (newLocation: ServerLocation) => {
+    // Always set the new location first
+    setCurrentLocation(newLocation)
+
+    // If currently connected, disconnect and reconnect to new server
+    if (isConnected === 'connected') {
+      setIsConnected('connecting')
+
+      try {
+        // Clear current proxy settings and connect to new server
+        chrome.proxy.settings.clear({ scope: 'regular' }, () => {
+          console.log('Previous server disconnected, connecting to new server...')
+        })
+
+        // Connect to new server
+        await connectVpn(newLocation)
+      } catch (err) {
+        console.error('Error switching servers:', err)
+        // Reset connection state on error
+        setIsConnected('not-connected')
+      }
+    }
+    // If not connected, just set the location (no need to connect automatically)
+  }
+
   const value = {
     isConnected,
     connectVpn,
     disconnectVpn,
     currentLocation,
     setCurrentLocation,
+    switchServer,
     locations,
     isLoading,
     connectionTime,

@@ -8,12 +8,12 @@ interface CountryItemProps {
 }
 
 export function CountryItem({ location }: CountryItemProps) {
-  const { currentLocation, setCurrentLocation } = useVpn()
+  const { currentLocation, switchServer } = useVpn()
   const isSelected = currentLocation?._id === location._id
   const { navigate } = useRouting()
 
   const handleSelectLocation = () => {
-    setCurrentLocation(location)
+    switchServer(location)
     navigate('home')
   }
 
